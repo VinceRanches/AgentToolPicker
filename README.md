@@ -30,22 +30,37 @@ The main CLI entry point for the agent. Orchestrates the conversation flow and t
 ```bash
 python agent.py "your question here"
 python agent.py "your question here" --verbose  # Show decision process
+python agent.py --help                          # Show help and usage examples
 ```
+
+**Options:**
+- `question`: The question or task to ask the agent (required, use quotes for multi-word questions)
+- `--verbose`, `-v`: Enable verbose output showing the agent's step-by-step decision process
+- `--help`, `-h`: Show help message with usage examples and available options
 
 **Features:**
 - Accepts natural language questions as command-line arguments
-- Supports verbose mode (`-v` or `--verbose`) to show the agent's decision-making process
+- Supports verbose mode to show the agent's decision-making process
 - Runs up to 3 steps of ReAct (Reasoning and Acting) before timing out
 - Handles tool calls and provides final answers
+- Comprehensive help documentation with examples
 
 #### `policy.py`
-Contains the LLM policy that decides whether to use tools or provide direct answers.
+LLM wrapper module that provides a flexible interface for different language models, with OpenAI as the default provider.
 
 **Key components:**
-- `call_llm()`: Interfaces with OpenAI's GPT-4o-mini model
-- System prompt that defines available tools and response format
-- JSON response parsing and validation
+- `LLMWrapper`: Abstract base class for implementing different LLM providers
+- `OpenAIWrapper`: Default implementation using OpenAI's GPT-4o-mini model
+- `call_llm()`: Backward-compatible function that uses the default LLM
+- `get_default_llm()` / `set_default_llm()`: Functions to manage the default LLM instance
+
+**Features:**
+- Extensible design allowing easy integration of other LLM providers
+- System prompt management for tool selection and response formatting
+- JSON response parsing and validation with Pydantic models
 - Automatic retry logic for malformed responses
+- Configurable model parameters (temperature, max_tokens, etc.)
+- Backward compatibility with existing code
 
 #### `tools.py`
 Defines the available tools and their implementations.
@@ -86,17 +101,29 @@ chmod +x setup.sh
 #### `run_tests.py`
 Test suite using pytest to validate agent functionality.
 
+**Usage:**
+```bash
+python run_tests.py                    # Run all tests with default verbosity
+python run_tests.py --verbose          # Run tests with detailed pytest output
+python run_tests.py -v                 # Same as --verbose
+python run_tests.py --quiet            # Run tests with minimal output
+python run_tests.py --help             # Show help and usage examples
+```
+
+**Options:**
+- `--verbose`, `-v`: Enable verbose pytest output showing detailed test results
+- `--quiet`, `-q`: Run tests with minimal output
+- `--help`, `-h`: Show help message with usage examples and available options
+
 **Test cases:**
 - `test_17_times_23()`: Tests mathematical calculation (17 × 23 = 391)
 - `test_reverse()`: Tests string reversal ("pineapple" → "elppaenip")
 - `test_wordcount()`: Tests word counting ("to be or not to be" → 6 words)
 
-**Usage:**
-```bash
-python run_tests.py
-# or
-pytest run_tests.py -v
-```
+**Features:**
+- Comprehensive argument parsing with help documentation
+- Flexible output verbosity control
+- Automated validation of core agent functionality
 
 ---
 

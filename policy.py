@@ -1,7 +1,8 @@
 import json
 import os
+from abc import ABC, abstractmethod
 from openai import OpenAI
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 from pydantic import ValidationError
 from io_models import ToolCall, FinalAnswer
 
@@ -23,34 +24,104 @@ SYSTEM_PROMPT = (
     "Remember: Output ONLY the JSON, nothing else."
 )
 
+class LLMWrapper(ABC):
+    """Abstract base class for LLM wrappers"""
+    def __init__(self, system_prompt: str = SYSTEM_PROMPT):
+        self.system_prompt = system_prompt
+
+    @abstractmethod
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        **kwargs
+    ) -> str:
+        """Generate a response from the LLM"""
+        pass
+
+    def call(
+        self,
+        history: List[Dict[str, str]],
+        max_retries: int = 2
+    ) -> None | FinalAnswer | ToolCall:
+        """Call the LLM and parse the response into ToolCall or FinalAnswer"""
+        messages = [{"role": "system", "content": self.system_prompt}] + history
+
+        for attempt in range(max_retries):
+            try:
+                raw = self.generate(messages)
+
+                # Parse the JSON response
+                data = json.loads(raw)
+                if data.get("type") == "final":
+                    return FinalAnswer(**data)
+                return ToolCall(**data)
+
+            except (json.JSONDecodeError, ValidationError) as e:
+                if attempt == max_retries - 1:  # Last attempt
+                    raise RuntimeError(f"LLM produced invalid JSON after {max_retries} attempts: {e}")
+                # Add a message asking for valid JSON and retry
+                messages.append({"role": "user", "content": "Please output valid JSON only."})
+            except Exception as e:
+                raise RuntimeError(f"Error calling LLM: {e}")
+
+
+class OpenAIWrapper(LLMWrapper):
+    """OpenAI LLM wrapper implementation"""
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+        temperature: float = 0,
+        max_tokens: int = 200,
+        system_prompt: str = SYSTEM_PROMPT
+    ):
+        super().__init__(system_prompt)
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set or api_key not provided. Please set it with your OpenAI API key.")
+
+        self.client = OpenAI(api_key=self.api_key)
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        **kwargs
+    ) -> str:
+        """Generate a response using OpenAI's API"""
+        # Allow override of default parameters
+        model = kwargs.get('model', self.model)
+        temperature = kwargs.get('temperature', self.temperature)
+        max_tokens = kwargs.get('max_tokens', self.max_tokens)
+
+        resp = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return resp.choices[0].message.content.strip()
+
+
+
+# Default LLM instance for backward compatibility
+_default_llm = None
+
+def get_default_llm() -> LLMWrapper:
+    """Get the default LLM instance (OpenAI by default)"""
+    global _default_llm
+    if _default_llm is None:
+        _default_llm = OpenAIWrapper()
+    return _default_llm
+
+def set_default_llm(llm: LLMWrapper):
+    """Set a custom default LLM instance"""
+    global _default_llm
+    _default_llm = llm
+
+# Backward compatibility function
 def call_llm(history: List[Dict[str, str]]) -> Union[ToolCall, FinalAnswer]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set. Please set it with your OpenAI API key.")
-
-    client = OpenAI(api_key=api_key)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
-
-    for attempt in range(2):
-        try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                temperature=0,
-                max_tokens=200,
-            )
-            raw = resp.choices[0].message.content.strip()
-
-            # Parse the JSON response
-            data = json.loads(raw)
-            if data.get("type") == "final":
-                return FinalAnswer(**data)
-            return ToolCall(**data)
-
-        except (json.JSONDecodeError, ValidationError) as e:
-            if attempt == 1:  # Last attempt
-                raise RuntimeError(f"LLM produced invalid JSON twice: {e}")
-            # Add a message asking for valid JSON and retry
-            messages.append({"role": "user", "content": "Please output valid JSON only."})
-        except Exception as e:
-            raise RuntimeError(f"Error calling OpenAI API: {e}")
+    """Backward compatible function that uses the default LLM"""
+    return get_default_llm().call(history)

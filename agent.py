@@ -19,13 +19,6 @@ def run_agent(question: str, verbose: bool = False):
 
         decision = call_llm(history)
 
-        if isinstance(decision, FinalAnswer):
-            if verbose:
-                print(f"✅ Final answer received: {decision.content}")
-            else:
-                print(decision.content)
-            return
-
         if verbose:
             print(f"🔧 Tool call: {decision.tool}")
             print(f"📝 Arguments: {json.dumps(decision.args, indent=2)}")
@@ -63,9 +56,19 @@ def run_agent(question: str, verbose: bool = False):
     print("Exceeded max steps.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the AI agent with tool selection capabilities")
-    parser.add_argument("question", help="The question to ask the agent")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output showing the agent's decision process")
+    parser = argparse.ArgumentParser(
+        description="AI Agent with Tool Selection - A ReAct-style agent that can use tools like calculator, string reversal, and word counting",
+        epilog="Examples:\n"
+               "  python agent.py 'What is 17 * 23?'\n"
+               "  python agent.py 'Reverse the word hello' --verbose\n"
+               "  python agent.py 'How many words in this sentence?' -v",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("question",
+                       help="The question or task to ask the agent. Use quotes for multi-word questions.")
+    parser.add_argument("--verbose", "-v",
+                       action="store_true",
+                       help="Enable verbose output showing the agent's step-by-step decision process")
 
     args = parser.parse_args()
 
